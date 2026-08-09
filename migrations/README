@@ -1,0 +1,1 @@
+Schema migrations are managed with Alembic. The initial application uses SQLAlchemy create_all for safe first-run bootstrap; future schema revisions belong in versions/ and are applied before startup.
