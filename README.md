@@ -2,7 +2,7 @@
 
 **Local Community News & Facebook Content Agent** is a Windows-first, local desktop workspace for community administrators. It combines editable community profiles, trusted-source research abstractions, transparent ranking, a safety-oriented post studio, sources, drafts, and local history. It never posts to Facebook automatically.
 
-> Status: functional desktop MVP. The app supports local profiles, careful pasted-information drafting, saved drafts, and live discovery when Tavily, Brave, or Serper is configured. Double-click a discovered result to create a sourced draft. All externally supplied facts still require administrator review.
+> Status: production-oriented foundation/MVP. The app is usable offline for profiles and careful pasted-information drafting. Live discovery activates when a supported provider is configured. All externally supplied facts still require administrator review.
 
 ## Product workflow
 
@@ -65,7 +65,7 @@ Open **Groups** to add, edit, or delete a profile. Topics are comma-separated an
 
 ## Post studio
 
-Choose a community and date window. Select **Find stories** (or a discovery mode button) to search asynchronously; double-click a result to create a sourced draft. **Search a Topic** validates the topic field, while **Paste Information** focuses the paste workspace. Pasted resident reports are intentionally described as reports, not facts. Add evidence to the separate Sources panel, edit freely, use the selected-text editor actions, copy to the clipboard, or save a local draft. URLs in source material are never invented. Facebook publishing stays manual: copy the approved post and open the group yourself.
+Choose a community and date window. Pasted resident reports are intentionally described as reports, not facts. Add evidence to the separate Sources panel, edit freely, copy to the clipboard, or save a local draft. URLs in source material are never invented. Facebook publishing stays manual: copy the approved post and open the group yourself.
 
 ## Tests
 

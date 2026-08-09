@@ -1,13 +1,9 @@
-import json
-from datetime import datetime, timedelta
+import json, webbrowser
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QListWidget,QStackedWidget,QLabel,QComboBox,QPushButton,QTextEdit,QLineEdit,QTableWidget,QTableWidgetItem,QMessageBox,QSplitter,QToolBar)
 from app.models.entities import GeneratedPost
 from app.repositories.core import GroupRepository,PostRepository,SourceRepository
 from app.ui.dialogs import GroupDialog
-from app.providers.search.factory import configured_provider
-from app.services.writer import SafePostWriter
-from app.ui.workers import ResearchWorker
-from app.utils.content import sanitize_pasted
 
 NAV=["Dashboard","Create Post","Latest Stories","Events","Government","Politics & Elections","Schools & Parents","Transportation","Housing","Public Safety","Community Activities","Projects & Development","Complaints & Civic Issues","Saved Stories","Post History","Groups","Sources","Settings"]
 class MainWindow(QMainWindow):
@@ -31,78 +27,21 @@ class MainWindow(QMainWindow):
         elif name=="Settings":
             state="Configured" if self.settings.openai_api_key else "Not configured — local editing remains available"
             v.addWidget(QLabel(f"AI provider: OpenAI ({state})\nModel: {self.settings.community_pulse_model}\nCredentials are loaded from the environment or OS credential storage."));theme=QPushButton("Toggle light / dark mode");theme.setCheckable(True);theme.toggled.connect(self._style);v.addWidget(theme)
-        else:
-            v.addWidget(QLabel("This workspace uses the verified story and post library. Use Create Post to discover or draft content."))
-            open_create=QPushButton("Open Create Post")
-            open_create.clicked.connect(lambda:self.nav.setCurrentRow(NAV.index("Create Post")))
-            v.addWidget(open_create)
+        else:v.addWidget(QLabel("This workspace uses the same verified story library and filters. Discover content from Create Post."))
         v.addStretch();return w
     def _create_post(self):
         w=QWidget();v=QVBoxLayout(w);h=QLabel("Which community are you posting to?");h.setObjectName("pageTitle");v.addWidget(h)
         top=QHBoxLayout();self.group_combo=QComboBox();self.group_combo.setEditable(True);self._reload_groups();top.addWidget(self.group_combo,1);add=QPushButton("+ Add Community");add.clicked.connect(self._add_group);top.addWidget(add);v.addLayout(top)
-        modes=QHBoxLayout()
-        discover_mode=QPushButton("Discover Latest Stories")
-        topic_mode=QPushButton("Search a Topic")
-        paste_mode=QPushButton("Paste Information")
-        discover_mode.clicked.connect(self._discover)
-        topic_mode.clicked.connect(self._search_topic)
-        paste_mode.clicked.connect(lambda: self.input.setFocus())
-        for button in (discover_mode, topic_mode, paste_mode): modes.addWidget(button)
-        v.addLayout(modes)
-        filters=QHBoxLayout();self.topic=QLineEdit();self.topic.setPlaceholderText("Topic, URL, or resident-supplied context");self.range=QComboBox();self.range.addItems(["Today","Last 24 Hours","Last 3 Days","Last 7 Days","Last 14 Days","Last 30 Days"]);filters.addWidget(self.topic,1);filters.addWidget(self.range)
-        self.discover_button=QPushButton("Find stories")
-        self.discover_button.clicked.connect(self._discover)
-        filters.addWidget(self.discover_button);v.addLayout(filters)
-        self.research_status=QLabel("Configure Tavily, Brave, or Serper in .env for live discovery. Local drafting works without a key.");self.research_status.setWordWrap(True);v.addWidget(self.research_status)
-        split=QSplitter();left=QWidget();lv=QVBoxLayout(left);lv.addWidget(QLabel("DISCOVERED STORIES / PASTE INFORMATION"));self.story_list=QListWidget();self.story_list.setMaximumHeight(180);self.story_list.itemDoubleClicked.connect(self._story_selected);lv.addWidget(self.story_list);self.input=QTextEdit();self.input.setPlaceholderText("Paste an announcement, article, URL, meeting notice, complaint, or resident information…");lv.addWidget(self.input);create=QPushButton("Create responsible draft");create.clicked.connect(self._draft_from_paste);lv.addWidget(create)
+        modes=QHBoxLayout();
+        for text in ("Discover Latest Stories","Search a Topic","Paste Information"):modes.addWidget(QPushButton(text))
+        v.addLayout(modes);filters=QHBoxLayout();self.topic=QLineEdit();self.topic.setPlaceholderText("Topic, URL, or resident-supplied context");self.range=QComboBox();self.range.addItems(["Today","Last 24 Hours","Last 3 Days","Last 7 Days","Last 14 Days","Last 30 Days","Custom Date Range"]);filters.addWidget(self.topic,1);filters.addWidget(self.range);v.addLayout(filters)
+        note=QLabel("Research requires a configured search provider. Pasted claims remain marked unverified until supported by sources.");note.setWordWrap(True);v.addWidget(note)
+        split=QSplitter();left=QWidget();lv=QVBoxLayout(left);lv.addWidget(QLabel("PASTE INFORMATION / NOTES"));self.input=QTextEdit();self.input.setPlaceholderText("Paste an announcement, article, URL, meeting notice, complaint, or resident information…");lv.addWidget(self.input);create=QPushButton("Create responsible draft");create.clicked.connect(self._draft_from_paste);lv.addWidget(create)
         right=QWidget();rv=QVBoxLayout(right);rv.addWidget(QLabel("HEADLINE"));self.headline=QLineEdit();rv.addWidget(self.headline);toolbar=QToolBar();
-        for label,fn in [("Undo",lambda:self.editor.undo()),("Redo",lambda:self.editor.redo()),("Shorten",lambda:self._edit_action("shorten")),("Expand",lambda:self._edit_action("expand")),("Improve Hook",lambda:self._edit_action("hook")),("Copy",self._copy), ("Save Draft",self._save_draft)]:toolbar.addAction(label).triggered.connect(fn)
+        for label,fn in [("Undo",lambda:self.editor.undo()),("Redo",lambda:self.editor.redo()),("Copy",self._copy), ("Save Draft",self._save_draft)]:toolbar.addAction(label).triggered.connect(fn)
         rv.addWidget(toolbar);self.editor=QTextEdit();rv.addWidget(self.editor);rv.addWidget(QLabel("SOURCES (always retained separately)"));self.sources=QTextEdit();self.sources.setMaximumHeight(130);self.sources.setPlaceholderText("One verified source per line: publisher | title | date | URL");rv.addWidget(self.sources);split.addWidget(left);split.addWidget(right);v.addWidget(split,1);return w
-    def _selected_group(self):
-        groups=self.groups.all(); idx=self.group_combo.currentIndex()
-        return groups[idx] if 0 <= idx < len(groups) else None
-    def _since(self):
-        days={"Today":1,"Last 24 Hours":1,"Last 3 Days":3,"Last 7 Days":7,"Last 14 Days":14,"Last 30 Days":30}[self.range.currentText()]
-        return datetime.now()-timedelta(days=days)
-    def _search_topic(self):
-        if not self.topic.text().strip():
-            self.topic.setFocus(); return QMessageBox.information(self,"Search a topic","Enter a topic, then select Search a Topic again.")
-        self._discover()
-    def _discover(self):
-        provider,name=configured_provider(self.settings); group=self._selected_group()
-        if not group:return QMessageBox.warning(self,"Community required","Select or add a community first.")
-        if provider is None:
-            return QMessageBox.information(self,"Search provider required","Add a TAVILY_API_KEY, BRAVE_API_KEY, or SERPER_API_KEY to .env, restart the app, and try again.")
-        self.discover_button.setEnabled(False);self.story_list.clear();self.research_status.setText(f"Searching {name} for {group.name}…")
-        self.worker=ResearchWorker(provider,group,self._since(),self.topic.text().strip(),self)
-        self.worker.completed.connect(self._research_complete);self.worker.failed.connect(self._research_failed);self.worker.start()
-    def _research_complete(self,results):
-        self._ranked_results=results;self.discover_button.setEnabled(True)
-        for score,reason,story in results:
-            item_text=f"{score:.0f}/100  {story.title} — {story.source}"
-            self.story_list.addItem(item_text)
-        self.research_status.setText(f"Found {len(results)} locally relevant, deduplicated stories. Double-click one to create a draft.")
-    def _research_failed(self,message):
-        self.discover_button.setEnabled(True);self.research_status.setText("Search failed. Check your internet connection and provider configuration.")
-        QMessageBox.warning(self,"Research unavailable",f"The search provider could not complete this request.\n\n{message}")
-    def _story_selected(self,item):
-        row=self.story_list.row(item)
-        if row < 0 or row >= len(getattr(self,"_ranked_results",[])):return
-        score,reason,story=self._ranked_results[row];group=self._selected_group();draft=SafePostWriter().generate(story,group)
-        self.headline.setText(draft.headline);self.editor.setPlainText(draft.body)
-        date=story.published_at.strftime("%Y-%m-%d") if story.published_at else "Date unavailable"
-        self.sources.setPlainText(f"{story.source} | {story.title} | {date} | {story.url}")
-        self.research_status.setText(f"Selected story score: {score}/100 — {reason}")
-    def _edit_action(self,action):
-        cursor=self.editor.textCursor();text=cursor.selectedText().replace("\u2029","\n") or self.editor.toPlainText()
-        if not text:return
-        if action=="shorten": changed=" ".join(text.split()[:max(20,int(len(text.split())*.65))])
-        elif action=="expand": changed=text+"\n\nWhy this matters locally: Add a verified, community-specific impact or action residents can take."
-        else: changed=f"Residents should pay attention to this local update.\n\n{text}"
-        if cursor.hasSelection():cursor.insertText(changed)
-        else:self.editor.setPlainText(changed)
     def _draft_from_paste(self):
-        text=sanitize_pasted(self.input.toPlainText());
+        text=self.input.toPlainText().strip();
         if not text:return QMessageBox.information(self,"Paste information","Paste source material or notes first.")
         headline=text.splitlines()[0][:150];self.headline.setText(headline);self.editor.setPlainText(f"UNVERIFIED COMMUNITY REPORT\n\n📍 COMMUNITY QUESTION\n\n{headline}\n\nSeveral residents or sources have raised the following information:\n\n{text}\n\nThis information has not yet been independently verified. Please share firsthand details or an official source without identifying private individuals.\n\n💬 What have you observed, and which public agency should follow up?")
     def _copy(self):
