@@ -7,8 +7,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.config.credentials import load_secret
 
 
+def _env_files() -> tuple[str, ...]:
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+    ]
+    found = []
+    for path in candidates:
+        if path.is_file() and str(path) not in found:
+            found.append(str(path))
+    return tuple(found) or (".env",)
+
+
 class AppSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files(), extra="ignore")
     app_name: str = "Community Pulse AI"
     openai_api_key: str | None = None
     community_pulse_model: str = "gpt-4.1-mini"
@@ -31,10 +43,16 @@ class AppSettings(BaseSettings):
 
     @property
     def data_dir(self) -> Path:
-        path = Path(user_data_dir("CommunityPulseAI", "Community Pulse")); path.mkdir(parents=True, exist_ok=True); return path
+        path = Path(user_data_dir("CommunityPulseAI", "Community Pulse"))
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     @property
     def log_dir(self) -> Path:
-        path = Path(user_log_dir("CommunityPulseAI", "Community Pulse")); path.mkdir(parents=True, exist_ok=True); return path
+        path = Path(user_log_dir("CommunityPulseAI", "Community Pulse"))
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     @property
     def database_url(self) -> str:
         return f"sqlite:///{self.data_dir / 'community_pulse.db'}"
