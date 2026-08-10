@@ -1,8 +1,12 @@
 import json
+import logging
 import webbrowser
+from functools import partial
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -21,6 +25,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+log = logging.getLogger(__name__)
 
 from app.models.entities import GeneratedPost
 from app.providers.images import ImageProvider
@@ -71,10 +77,11 @@ STORY_PAGES = {
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, session, settings):
+    def __init__(self, session, settings, build: str = "dev"):
         super().__init__()
         self.s = session
         self.settings = settings
+        self.build = build
         self.groups = GroupRepository(session)
         self.posts = PostRepository(session)
         self.sources_repo = SourceRepository(session)
@@ -87,8 +94,12 @@ class MainWindow(QMainWindow):
         self.custom_days = 7
         self.mode = "paste"
         self._story_tables = {}
+        self._action_refs = []
+        self._slot_refs = []
 
-        self.setWindowTitle("Community Pulse AI — Local Community News & Facebook Content Agent")
+        self.setWindowTitle(
+            f"Community Pulse AI — Local Community News & Facebook Content Agent [{build}]"
+        )
         self.resize(1380, 850)
         root = QWidget()
         layout = QHBoxLayout(root)
@@ -109,6 +120,24 @@ class MainWindow(QMainWindow):
         self.nav.setCurrentRow(0)
         self._style(False)
         self._set_mode("paste")
+        provider, provider_name = configured_provider(
+            self.settings, self.sources_repo.enabled_rss_urls()
+        )
+        key_msg = (
+            f"Ready · search={provider_name or 'NONE'} · "
+            f"openai={'yes' if self.settings.openai_api_key else 'no'} · build={build}"
+        )
+        self.statusBar().showMessage(key_msg, 15000)
+        log.info(key_msg)
+        if not provider:
+            QMessageBox.warning(
+                self,
+                "Search key not loaded",
+                "Tavily/OpenAI keys were not detected.\n\n"
+                "Put them in a .env file inside C:\\Project\\fbgroup_content_assistant:\n\n"
+                "TAVILY_API_KEY=...\nOPENAI_API_KEY=...\n\n"
+                "Then close the app and run: python -m app.main",
+            )
 
     def _on_nav(self, index: int):
         self.stack.setCurrentIndex(index)
@@ -149,8 +178,11 @@ class MainWindow(QMainWindow):
                     "Manage editable communities, trusted sources, drafts, and publishing history locally."
                 )
             )
+            self.dashboard_status = QLabel(self._provider_status_text())
+            self.dashboard_status.setWordWrap(True)
+            v.addWidget(self.dashboard_status)
             b = QPushButton("Create a community post")
-            b.clicked.connect(lambda: self.nav.setCurrentRow(NAV.index("Create Post")))
+            b.clicked.connect(self._go_create_post)
             v.addWidget(b)
         elif name == "Settings":
             self.settings_label = QLabel()
@@ -164,24 +196,46 @@ class MainWindow(QMainWindow):
         v.addStretch()
         return w
 
-    def _refresh_settings(self):
-        if not hasattr(self, "settings_label"):
-            return
+    def _provider_status_text(self) -> str:
         _, provider_name = configured_provider(
             self.settings, self.sources_repo.enabled_rss_urls()
         )
-        search_state = provider_name or "Not configured — paste drafting remains available"
-        ai_state = (
-            "Configured"
-            if self.settings.openai_api_key
-            else "Not configured — local safe writer remains available"
-        )
-        self.settings_label.setText(
+        search_state = provider_name or "NOT LOADED — check .env TAVILY_API_KEY"
+        ai_state = "Configured" if self.settings.openai_api_key else "Not configured"
+        return (
+            f"Build: {self.build}\n"
             f"Search provider: {search_state}\n"
             f"AI provider: OpenAI ({ai_state})\n"
             f"Model: {self.settings.community_pulse_model}\n"
-            "Credentials are loaded from the environment (.env) or OS credential storage."
+            "Credentials load from .env in the project folder."
         )
+
+    def _refresh_settings(self):
+        if not hasattr(self, "settings_label"):
+            return
+        self.settings_label.setText(self._provider_status_text())
+        if hasattr(self, "dashboard_status"):
+            self.dashboard_status.setText(self._provider_status_text())
+        if hasattr(self, "key_status"):
+            self.key_status.setText(self._provider_status_text())
+
+    def _go_create_post(self):
+        self.nav.setCurrentRow(NAV.index("Create Post"))
+
+    def _safe(self, fn):
+        """Keep a stable slot wrapper so clicks always show errors instead of dying silently."""
+
+        def wrapped(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as exc:
+                log.exception("UI action failed: %s", getattr(fn, "__name__", fn))
+                QMessageBox.critical(self, "Action failed", f"{type(exc).__name__}: {exc}")
+
+        wrapped.__name__ = getattr(fn, "__name__", "ui_action")
+        # PySide can garbage-collect unbound wrappers and silently disconnect buttons.
+        self._slot_refs.append(wrapped)
+        return wrapped
 
     def _create_post(self):
         w = QWidget()
@@ -190,16 +244,20 @@ class MainWindow(QMainWindow):
         h.setObjectName("pageTitle")
         v.addWidget(h)
 
+        self.key_status = QLabel(self._provider_status_text())
+        self.key_status.setWordWrap(True)
+        v.addWidget(self.key_status)
+
         top = QHBoxLayout()
         self.group_combo = QComboBox()
-        self.group_combo.setEditable(True)
+        self.group_combo.setEditable(False)
         self._reload_groups()
         top.addWidget(self.group_combo, 1)
         add = QPushButton("+ Add Community")
-        add.clicked.connect(self._add_group)
+        add.clicked.connect(self._safe(self._add_group))
         top.addWidget(add)
         open_fb = QPushButton("Open Facebook group")
-        open_fb.clicked.connect(self._open_facebook)
+        open_fb.clicked.connect(self._safe(self._open_facebook))
         top.addWidget(open_fb)
         v.addLayout(top)
 
@@ -207,13 +265,13 @@ class MainWindow(QMainWindow):
         self.btn_discover = QPushButton("Discover Latest Stories")
         self.btn_search = QPushButton("Search a Topic")
         self.btn_paste = QPushButton("Paste Information")
-        self.btn_discover.clicked.connect(self._click_discover)
-        self.btn_search.clicked.connect(self._click_search)
-        self.btn_paste.clicked.connect(self._click_paste)
-        for btn in (self.btn_discover, self.btn_search, self.btn_paste):
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        for idx, btn in enumerate((self.btn_discover, self.btn_search, self.btn_paste)):
             btn.setCheckable(True)
-            btn.setAutoExclusive(True)
+            self.mode_group.addButton(btn, idx)
             modes.addWidget(btn)
+        self.mode_group.idClicked.connect(self._safe(self._on_mode_id_clicked))
         v.addLayout(modes)
 
         filters = QHBoxLayout()
@@ -224,8 +282,8 @@ class MainWindow(QMainWindow):
         self.range.setCurrentText("Last 7 Days")
         filters.addWidget(self.topic, 1)
         filters.addWidget(self.range)
-        self.run_btn = QPushButton("Run discovery")
-        self.run_btn.clicked.connect(self._run_discovery)
+        self.run_btn = QPushButton("Run discovery / Search now")
+        self.run_btn.clicked.connect(self._safe(self._run_discovery))
         filters.addWidget(self.run_btn)
         v.addLayout(filters)
 
@@ -254,16 +312,16 @@ class MainWindow(QMainWindow):
         lv.addWidget(self.results_list)
 
         self.create_btn = QPushButton("Create responsible draft")
-        self.create_btn.clicked.connect(self._draft_from_paste)
+        self.create_btn.clicked.connect(self._safe(self._draft_from_paste))
         lv.addWidget(self.create_btn)
 
         self.use_story_btn = QPushButton("Generate draft from selected story")
-        self.use_story_btn.clicked.connect(self._draft_from_selected)
+        self.use_story_btn.clicked.connect(self._safe(self._draft_from_selected))
         self.use_story_btn.hide()
         lv.addWidget(self.use_story_btn)
 
         self.save_story_btn = QPushButton("Save selected story")
-        self.save_story_btn.clicked.connect(self._save_selected_story)
+        self.save_story_btn.clicked.connect(self._safe(self._save_selected_story))
         self.save_story_btn.hide()
         lv.addWidget(self.save_story_btn)
 
@@ -277,13 +335,16 @@ class MainWindow(QMainWindow):
         self.headline = QLineEdit()
         rv.addWidget(self.headline)
         toolbar = QToolBar()
-        for label, fn in [
-            ("Undo", lambda: self.editor.undo()),
-            ("Redo", lambda: self.editor.redo()),
+        for label, slot in [
+            ("Undo", self.editor.undo),
+            ("Redo", self.editor.redo),
             ("Copy", self._copy),
             ("Save Draft", self._save_draft),
         ]:
-            toolbar.addAction(label).triggered.connect(fn)
+            action = QAction(label, self)
+            action.triggered.connect(self._safe(slot))
+            toolbar.addAction(action)
+            self._action_refs.append(action)
         rv.addWidget(toolbar)
         self.editor = QTextEdit()
         rv.addWidget(self.editor)
@@ -303,16 +364,32 @@ class MainWindow(QMainWindow):
         v.addWidget(split, 1)
         return w
 
+    def _on_mode_id_clicked(self, mode_id: int):
+        log.info("Mode button clicked id=%s", mode_id)
+        if mode_id == 0:
+            self._click_discover()
+        elif mode_id == 1:
+            self._click_search()
+        else:
+            self._click_paste()
+
     def _click_discover(self):
         self._set_mode("discover")
         self.statusBar().showMessage("Searching online for latest community stories…", 4000)
+        QMessageBox.information(
+            self,
+            "Starting discovery",
+            "Searching online now with your configured provider. Click OK to continue.",
+        )
         self._run_discovery()
 
     def _click_search(self):
         self._set_mode("search")
         if not self.topic.text().strip():
             self.topic.setFocus()
-            self.status_note.setText("Type a topic above (example: housing, schools, NJ Transit), then click Search a Topic again.")
+            self.status_note.setText(
+                "Type a topic above (example: housing, schools, NJ Transit), then click Search a Topic again."
+            )
             self.statusBar().showMessage("Enter a topic to search", 4000)
             QMessageBox.information(
                 self,
@@ -326,7 +403,14 @@ class MainWindow(QMainWindow):
     def _click_paste(self):
         self._set_mode("paste")
         self.input.setFocus()
-        self.statusBar().showMessage("Paste mode — add notes on the left, then Create responsible draft", 4000)
+        self.statusBar().showMessage(
+            "Paste mode — add notes on the left, then Create responsible draft", 4000
+        )
+        QMessageBox.information(
+            self,
+            "Paste mode",
+            "Paste text on the left, then click Create responsible draft.",
+        )
 
     def _set_mode(self, mode: str):
         self.mode = mode
@@ -399,10 +483,13 @@ class MainWindow(QMainWindow):
         self.status_note.setText(f"Running discovery with {name}…")
         self.run_btn.setEnabled(False)
         self.worker = ResearchWorker(provider, group, since, topic, self)
-        self.worker.completed.connect(self._on_discovery_done)
-        self.worker.failed.connect(self._on_discovery_failed)
-        self.worker.finished.connect(lambda: self.run_btn.setEnabled(True))
+        self.worker.completed.connect(self._safe(self._on_discovery_done))
+        self.worker.failed.connect(self._safe(self._on_discovery_failed))
+        self.worker.finished.connect(self._safe(self._discovery_finished))
         self.worker.start()
+
+    def _discovery_finished(self):
+        self.run_btn.setEnabled(True)
 
     def _on_discovery_done(self, ranked):
         self.discovery_results = ranked or []
@@ -766,8 +853,8 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         open_btn = QPushButton("Open in Create Post")
         save_btn = QPushButton("Toggle saved")
-        open_btn.clicked.connect(lambda: self._open_library_story(name))
-        save_btn.clicked.connect(lambda: self._toggle_library_saved(name))
+        open_btn.clicked.connect(self._safe(partial(self._open_library_story, name)))
+        save_btn.clicked.connect(self._safe(partial(self._toggle_library_saved, name)))
         buttons.addWidget(open_btn)
         buttons.addWidget(save_btn)
         v.addLayout(buttons)
@@ -863,10 +950,11 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             f"QWidget{{background:{bg};color:{fg};font-size:14px}} "
             f"QListWidget,QTextEdit,QLineEdit,QComboBox,QTableWidget{{background:{card};border:1px solid #627086;border-radius:6px;padding:6px}} "
-            f"QPushButton{{background:{accent};color:white;border:0;border-radius:6px;padding:9px 14px}} "
+            f"QPushButton{{background:{accent};color:white;border:0;border-radius:6px;padding:9px 14px;"
+            f"font-weight:600}} "
             f"QPushButton:hover{{background:#12877b}} "
             f"QPushButton:checked{{background:#0f6f66;border:2px solid {'#9fe1d8' if dark else '#0b4f48'}}} "
-            f"#pageTitle{{font-size:25px;font-weight:700;padding:12px 0}} "
+            f"#pageTitle{{font-size:22pt;font-weight:700;padding:12px 0}} "
             f"QListWidget::item{{padding:8px}} "
             f"QListWidget::item:selected{{background:{accent};color:white}}"
         )
