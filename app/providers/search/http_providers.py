@@ -1,7 +1,11 @@
 from datetime import datetime
+
 import httpx
+
 from app.models.schemas import SearchResult
+
 from .base import SearchProvider
+
 
 class ApiSearchProvider(SearchProvider):
     endpoint = ""; key_header = ""
@@ -11,7 +15,8 @@ class TavilyProvider(ApiSearchProvider):
     endpoint = "https://api.tavily.com/search"
     async def search(self, query, since=None, limit=20):
         payload = {"api_key": self.api_key, "query": query, "max_results": limit, "search_depth": "advanced"}
-        if since: payload["days"] = max(1, (datetime.now() - since).days + 1)
+        if since:
+            payload["days"] = max(1, (datetime.now() - since.replace(tzinfo=None)).days + 1)
         async with httpx.AsyncClient(timeout=self.timeout) as client: data=(await client.post(self.endpoint,json=payload)).raise_for_status().json()
         return [SearchResult(title=x["title"],url=x["url"],summary=x.get("content", ""),source=x.get("url", "").split("/")[2]) for x in data.get("results", [])]
 

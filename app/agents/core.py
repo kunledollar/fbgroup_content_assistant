@@ -1,6 +1,7 @@
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
+
 from app.models.schemas import SearchResult
 
 OFFICIAL_MARKERS=(".gov","nj.gov","newarknj.gov","nps.k12.nj.us","njtransit.com","panynj.gov")
@@ -23,7 +24,7 @@ class RelevanceAgent:
 class FreshnessAgent:
     def score(self, published, now=None):
         if not published: return .15
-        now=now or datetime.now(timezone.utc); published=published if published.tzinfo else published.replace(tzinfo=timezone.utc)
+        now=now or datetime.now(UTC); published=published if published.tzinfo else published.replace(tzinfo=UTC)
         hours=max(0,(now-published).total_seconds()/3600)
         return 1 if hours<=24 else .85 if hours<=72 else .65 if hours<=168 else .4 if hours<=720 else .1
 
@@ -43,8 +44,11 @@ class ReliabilityAgent:
 class RankingAgent:
     weights={"freshness":.25,"local":.25,"impact":.20,"discussion":.15,"actionability":.10,"source":.05}
     def rank(self,result,freshness,local,reliability):
-        impact=.7 if any(x in result.title.lower() for x in ("meeting","closure","election","school","safety","housing")) else .5
-        discussion=.65; action=.75 if result.event_at or any(x in result.summary.lower() for x in ("register","attend","deadline")) else .45
+        text=f"{result.title} {result.summary}".lower()
+        impact=.7 if any(x in text for x in ("meeting","closure","election","school","safety","housing")) else .5
+        # Discussion is a transparent proxy from civic engagement cues, not a virality predictor.
+        discussion=.8 if any(x in text for x in ("public comment","town hall","hearing","forum","residents say")) else .55
+        action=.75 if result.event_at or any(x in text for x in ("register","attend","deadline")) else .45
         parts={"freshness":freshness,"local":local,"impact":impact,"discussion":discussion,"actionability":action,"source":reliability}
         score=round(sum(parts[k]*self.weights[k] for k in parts)*100,1)
         return score, "; ".join(f"{k} {round(v*100)}%" for k,v in parts.items())

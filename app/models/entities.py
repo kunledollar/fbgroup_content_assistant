@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.session import Base
+
 
 class CommunityGroup(Base):
     __tablename__ = "groups"
@@ -33,6 +37,7 @@ class Story(Base):
     location: Mapped[str] = mapped_column(String(200), default=""); topic: Mapped[str] = mapped_column(String(100), default="Community")
     score: Mapped[float] = mapped_column(Float, default=0); score_reason: Mapped[str] = mapped_column(Text, default="")
     confidence: Mapped[str] = mapped_column(String(20), default="Unverified")
+    saved: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class GeneratedPost(Base):
     __tablename__ = "generated_posts"; id: Mapped[int] = mapped_column(primary_key=True)

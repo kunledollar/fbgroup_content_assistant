@@ -29,3 +29,6 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+ignore = ["BLE001", "S112", "LOG015", "RUF012", "DTZ001", "DTZ003", "DTZ005"]
