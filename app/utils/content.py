@@ -1,7 +1,9 @@
 import re
 from datetime import datetime
-from dateutil import parser
+
 from bs4 import BeautifulSoup
+from dateutil import parser
+
 
 def sanitize_pasted(value: str) -> str:
     soup=BeautifulSoup(value,"html.parser")
@@ -11,7 +13,7 @@ def sanitize_pasted(value: str) -> str:
 def extract_date(value: str) -> datetime | None:
     patterns=[r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4}\b",r"\b\d{4}-\d{2}-\d{2}\b"]
     for pattern in patterns:
-        hit=re.search(pattern,value,re.I)
+        hit=re.search(pattern,value,re.IGNORECASE)
         if hit:
             try:return parser.parse(hit.group(0),fuzzy=False)
             except ValueError:pass

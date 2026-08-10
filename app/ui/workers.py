@@ -1,5 +1,7 @@
 import asyncio
+
 from PySide6.QtCore import QThread, Signal
+
 from app.agents.orchestrator import ResearchOrchestrator
 
 

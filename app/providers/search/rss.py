@@ -1,8 +1,13 @@
-import asyncio, feedparser
-from datetime import datetime
+import asyncio
+
+import feedparser
 from dateutil import parser
+
 from app.models.schemas import SearchResult
+
 from .base import SearchProvider
+
+
 class RSSProvider(SearchProvider):
     def __init__(self, urls: list[str]): self.urls=urls
     async def search(self, query, since=None, limit=20):

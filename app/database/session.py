@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+
 class Base(DeclarativeBase): pass
 
 def make_engine(url: str):

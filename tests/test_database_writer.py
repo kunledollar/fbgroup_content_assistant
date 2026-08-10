@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
-from app.database.session import make_engine,Base
+
 from app.database.bootstrap import initialize
-from app.models.entities import CommunityGroup,GroupTopic
+from app.database.session import make_engine
+from app.models.entities import CommunityGroup, GroupTopic
 from app.models.schemas import SearchResult
 from app.services.writer import SafePostWriter
+
 
 def test_starter_groups_and_editable_crud():
     e=make_engine("sqlite://");initialize(e)

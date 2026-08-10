@@ -1,9 +1,13 @@
-import logging,sys
-from PySide6.QtWidgets import QApplication,QMessageBox
-from app.config.settings import AppSettings
-from app.database.session import make_engine
-from app.database.bootstrap import initialize
+import logging
+import sys
+
+from PySide6.QtWidgets import QApplication, QMessageBox
 from sqlalchemy.orm import Session
+
+from app.config.settings import AppSettings
+from app.database.bootstrap import initialize
+from app.database.session import make_engine
+
 
 def main():
     settings=AppSettings();logging.basicConfig(filename=settings.log_dir/"community_pulse.log",level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")

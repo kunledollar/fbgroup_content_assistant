@@ -1,5 +1,15 @@
 from datetime import datetime
-from app.agents.core import QueryPlanner, RelevanceAgent, FreshnessAgent, DeduplicationAgent, ReliabilityAgent, RankingAgent
+
+from app.agents.core import (
+    DeduplicationAgent,
+    FreshnessAgent,
+    QueryPlanner,
+    RankingAgent,
+    RelevanceAgent,
+    ReliabilityAgent,
+)
+
+
 class ResearchOrchestrator:
     def __init__(self, provider):
         self.provider=provider; self.planner=QueryPlanner(); self.relevance=RelevanceAgent(); self.freshness=FreshnessAgent(); self.dedupe=DeduplicationAgent(); self.reliability=ReliabilityAgent(); self.ranking=RankingAgent()

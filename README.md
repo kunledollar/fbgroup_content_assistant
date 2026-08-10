@@ -2,7 +2,7 @@
 
 **Local Community News & Facebook Content Agent** is a Windows-first, local desktop workspace for community administrators. It combines editable community profiles, trusted-source research abstractions, transparent ranking, a safety-oriented post studio, sources, drafts, and local history. It never posts to Facebook automatically.
 
-> Status: production-oriented foundation/MVP. The app is usable offline for profiles and careful pasted-information drafting. Live discovery activates when a supported provider is configured. All externally supplied facts still require administrator review.
+> Status: usable MVP. Profiles, paste drafting, source management, draft history, and story library work offline. Live discovery runs from Create Post when a search provider and/or RSS feeds are configured. Optional OpenAI rewriting falls back to the safe local writer. All externally supplied facts still require administrator review.
 
 ## Product workflow
 
@@ -22,8 +22,9 @@ The seeded profiles cover the ten requested Newark, Essex County, West Orange, s
 - **Persistence:** SQLAlchemy + per-user SQLite under `%LOCALAPPDATA%` (via `platformdirs`), never Program Files.
 - **Research:** a small orchestrator invokes query planning, provider search, locality screening, freshness checks, deduplication, source reliability, and configurable transparent ranking concepts.
 - **Providers:** async Tavily, Brave, Serper, and RSS implementations behind `SearchProvider`. Provider code uses timeouts and never attempts to bypass access controls.
-- **Writing:** deterministic safe fallback works without AI. Low-confidence material is prominently marked `UNVERIFIED COMMUNITY REPORT`. An OpenAI-backed writer can be added behind the LLM provider boundary without changing UI/domain code.
-- **Security:** secrets come from environment variables (or should be entered into the OS keychain); source HTML is sanitized; technical failures are written to the per-user log rather than exposed as stack traces.
+- **Writing:** deterministic safe fallback works without AI. Low-confidence material is prominently marked `UNVERIFIED COMMUNITY REPORT`. An optional OpenAI-backed writer improves drafts behind the LLM boundary and falls back locally on any failure.
+- **Images:** suggestion metadata only — copyrighted news photographs are never downloaded.
+- **Security:** secrets come from environment variables or the OS keychain; pasted HTML is sanitized; technical failures are written to the per-user log rather than exposed as stack traces.
 
 ### Agent workflow
 
@@ -57,11 +58,11 @@ On first launch the app creates the database and imports starter communities and
 
 Copy `.env.example` to `.env`, select one search provider, and set only its key. `OPENAI_API_KEY` is optional. Never put real values in source control. For distributed builds, use environment variables or Windows Credential Manager/keyring. Model selection uses `COMMUNITY_PULSE_MODEL`.
 
-Supported provider adapters: Tavily, Brave Search, Serper, and RSS/direct feeds. Google CSE settings are reserved for a future adapter. Search services should honor robots directives, licensing, terms, paywalls, authentication, CAPTCHAs, and access controls.
+Supported provider adapters: Tavily, Brave Search, Serper, Google CSE, and RSS/direct feeds (including composite HTTP + RSS). Search services should honor robots directives, licensing, terms, paywalls, authentication, CAPTCHAs, and access controls.
 
 ## Communities and trusted sources
 
-Open **Groups** to add, edit, or delete a profile. Topics are comma-separated and drive relevance queries. Open **Sources** to review prioritized, data-driven sources. Source editing and RSS management are represented in the persistence model and provider layer; expose them in a future source dialog using the same repository pattern.
+Open **Groups** to add, edit, or delete a profile. Topics are comma-separated and drive relevance queries. Open **Sources** to add, edit, or delete prioritized sources and optional RSS feeds used for discovery.
 
 ## Post studio
 
