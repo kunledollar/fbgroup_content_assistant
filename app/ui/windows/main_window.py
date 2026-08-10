@@ -207,10 +207,12 @@ class MainWindow(QMainWindow):
         self.btn_discover = QPushButton("Discover Latest Stories")
         self.btn_search = QPushButton("Search a Topic")
         self.btn_paste = QPushButton("Paste Information")
-        self.btn_discover.clicked.connect(lambda: self._set_mode("discover"))
-        self.btn_search.clicked.connect(lambda: self._set_mode("search"))
-        self.btn_paste.clicked.connect(lambda: self._set_mode("paste"))
+        self.btn_discover.clicked.connect(self._click_discover)
+        self.btn_search.clicked.connect(self._click_search)
+        self.btn_paste.clicked.connect(self._click_paste)
         for btn in (self.btn_discover, self.btn_search, self.btn_paste):
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
             modes.addWidget(btn)
         v.addLayout(modes)
 
@@ -228,8 +230,8 @@ class MainWindow(QMainWindow):
         v.addLayout(filters)
 
         self.status_note = QLabel(
-            "Research requires a configured search provider or RSS feeds. "
-            "Pasted claims remain marked unverified until supported by sources."
+            "Select a community, then click Discover Latest Stories to search online. "
+            "Or click Paste Information to draft from text you already have."
         )
         self.status_note.setWordWrap(True)
         v.addWidget(self.status_note)
@@ -301,31 +303,59 @@ class MainWindow(QMainWindow):
         v.addWidget(split, 1)
         return w
 
+    def _click_discover(self):
+        self._set_mode("discover")
+        self.statusBar().showMessage("Searching online for latest community stories…", 4000)
+        self._run_discovery()
+
+    def _click_search(self):
+        self._set_mode("search")
+        if not self.topic.text().strip():
+            self.topic.setFocus()
+            self.status_note.setText("Type a topic above (example: housing, schools, NJ Transit), then click Search a Topic again.")
+            self.statusBar().showMessage("Enter a topic to search", 4000)
+            QMessageBox.information(
+                self,
+                "Enter a topic",
+                "Type what you want to research in the topic box, then click Search a Topic again.",
+            )
+            return
+        self.statusBar().showMessage(f"Searching online for: {self.topic.text().strip()}", 4000)
+        self._run_discovery()
+
+    def _click_paste(self):
+        self._set_mode("paste")
+        self.input.setFocus()
+        self.statusBar().showMessage("Paste mode — add notes on the left, then Create responsible draft", 4000)
+
     def _set_mode(self, mode: str):
         self.mode = mode
         discovering = mode in {"discover", "search"}
+        self.btn_discover.setChecked(mode == "discover")
+        self.btn_search.setChecked(mode == "search")
+        self.btn_paste.setChecked(mode == "paste")
         self.input.setVisible(not discovering)
         self.create_btn.setVisible(not discovering)
         self.results_list.setVisible(discovering)
         self.use_story_btn.setVisible(discovering)
         self.save_story_btn.setVisible(discovering)
         self.run_btn.setVisible(discovering)
-        self.topic.setEnabled(mode != "discover" or True)
         if mode == "discover":
             self.left_title.setText("DISCOVERED / RANKED STORIES")
             self.status_note.setText(
-                "Discover Latest Stories uses community topics and the configured provider + RSS feeds."
+                "Searching with your community topics via Tavily/RSS. Results appear in the left list."
             )
             if not self.topic.text().strip():
                 self.topic.setPlaceholderText("Optional focus topic (uses community topics if empty)")
         elif mode == "search":
             self.left_title.setText("SEARCH RESULTS")
-            self.status_note.setText("Search a Topic requires a topic query and a configured provider or RSS.")
+            self.status_note.setText("Search mode — enter a topic, then click Search a Topic to run.")
             self.topic.setPlaceholderText("Required: topic to research")
         else:
             self.left_title.setText("PASTE INFORMATION / NOTES")
             self.status_note.setText(
-                "Pasted claims remain marked unverified until supported by sources."
+                "Paste mode — put source material on the left, then click Create responsible draft. "
+                "Claims stay marked unverified until you add sources."
             )
             self.topic.setPlaceholderText("Topic, URL, or resident-supplied context")
             self.rank_label.setText("")
@@ -835,6 +865,7 @@ class MainWindow(QMainWindow):
             f"QListWidget,QTextEdit,QLineEdit,QComboBox,QTableWidget{{background:{card};border:1px solid #627086;border-radius:6px;padding:6px}} "
             f"QPushButton{{background:{accent};color:white;border:0;border-radius:6px;padding:9px 14px}} "
             f"QPushButton:hover{{background:#12877b}} "
+            f"QPushButton:checked{{background:#0f6f66;border:2px solid {'#9fe1d8' if dark else '#0b4f48'}}} "
             f"#pageTitle{{font-size:25px;font-weight:700;padding:12px 0}} "
             f"QListWidget::item{{padding:8px}} "
             f"QListWidget::item:selected{{background:{accent};color:white}}"
