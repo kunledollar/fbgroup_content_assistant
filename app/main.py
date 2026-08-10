@@ -10,7 +10,7 @@ from app.config.settings import AppSettings
 from app.database.bootstrap import initialize
 from app.database.session import make_engine
 
-APP_BUILD = "2026-08-11-editor-fix"
+APP_BUILD = "2026-08-11-tavily-fix"
 
 
 def _install_excepthook():
