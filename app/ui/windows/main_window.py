@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         rv.addWidget(QLabel("HEADLINE"))
         self.headline = QLineEdit()
         rv.addWidget(self.headline)
+        self.editor = QTextEdit()
         toolbar = QToolBar()
         for label, slot in [
             ("Undo", self.editor.undo),
@@ -346,7 +347,6 @@ class MainWindow(QMainWindow):
             toolbar.addAction(action)
             self._action_refs.append(action)
         rv.addWidget(toolbar)
-        self.editor = QTextEdit()
         rv.addWidget(self.editor)
         rv.addWidget(QLabel("SOURCES (always retained separately)"))
         self.sources = QTextEdit()
